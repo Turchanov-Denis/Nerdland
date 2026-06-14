@@ -39,28 +39,3 @@ func NewPostgress() (*sql.DB, error) {
 	return db, nil
 
 }
-
-func Init(db *sql.DB) error {
-	query := `
-CREATE TABLE IF NOT EXISTS accounts (
-	id BIGSERIAL PRIMARY KEY,
-	email TEXT UNIQUE NOT NULL,
-	password_hash TEXT NOT NULL,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS profiles (
-	account_id BIGINT PRIMARY KEY,
-	username TEXT UNIQUE NOT NULL,
-	display_name TEXT NOT NULL,
-	bio TEXT NOT NULL DEFAULT '',
-	avatar_url TEXT NOT NULL DEFAULT '',
-
-	FOREIGN KEY(account_id) 
-	REFERENCES accounts(id) 
-	ON DELETE CASCADE
-);
-`
-	_, err := db.Exec(query)
-	return err
-}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"account/internal/account"
 	"account/internal/database"
 	"account/internal/logger"
 
@@ -14,7 +15,6 @@ func main() {
 
 	err := godotenv.Load(".env", "./.env")
 	if err != nil {
-		// Не блокируем выполнение, если env прокинут через Docker напрямую
 		log.Info("No .env found")
 	}
 
@@ -30,11 +30,21 @@ func main() {
 		log.Error(err.Error())
 	}
 
+	accountRepo := account.NewRepository(db)
 	// db init
-	err = database.Init(db)
+	accountRepo.Init()
+	// test register and test read
+	err = accountRepo.RegisterUser("alex@gmail.com",
+		"hash123",
+		"alex",
+		"Alex")
 	if err != nil {
 		log.Error(err.Error())
 	}
-	// test register and test read
-
+	profile, err := accountRepo.GetProfileByUsername("alex")
+	if err != nil {
+		log.Error(err.Error())
+	}
+	log.Info("Get", "profile",
+		profile)
 }
