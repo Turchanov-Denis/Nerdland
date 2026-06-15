@@ -26,8 +26,8 @@ func NewServer(as *account.AuthService, log *slog.Logger) *Server {
 		log:         log,
 		mux:         http.NewServeMux(),
 	}
-	s.mux.HandleFunc("/api/v1/auth/login", s.handleLogin)
-	s.mux.HandleFunc("/api/v1/auth/register", s.handleRegistration)
+	s.mux.HandleFunc("/auth/login", s.handleLogin)
+	s.mux.HandleFunc("/auth/register", s.handleRegistration)
 	return s
 }
 
@@ -35,6 +35,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("incoming request", "method", r.Method, "path", r.URL.Path)
 	s.mux.ServeHTTP(w, r)
 }
+
 func (s *Server) handleRegistration(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -50,14 +51,14 @@ func (s *Server) handleRegistration(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, account.ErrEmailAlreadyExists):
-			http.Error(w, "Email already exists", http.StatusConflict) // 409 Conflict
+			http.Error(w, "Email already exists", http.StatusConflict)
 			return
 		case errors.Is(err, account.ErrUsernameAlreadyExists):
-			http.Error(w, "Username already exists", http.StatusConflict) // 409 Conflict
+			http.Error(w, "Username already exists", http.StatusConflict)
 			return
 		default:
 			s.log.Error("registration failed", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError) // 500
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 
 		}
@@ -85,6 +86,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	tokens, err := s.authService.Login(req)
 	if err != nil {
 		s.log.Error("login failed", "email", req.Email, "error", err)
+		if errors.Is(err, account.ErrAccountByEmailNotFound) {
+			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			return
+		}
 
 		if errors.Is(err, account.ErrInvalidPassword) {
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
@@ -147,7 +152,7 @@ func main() {
 	server := NewServer(authService, log)
 
 	log.Info("server is running on :8080")
-	if err := http.ListenAndServe(":8080", server); err != nil {
+	if err := http.ListenAndServe("localhost:8080", server); err != nil {
 		log.Error("server stopped with error", "error", err)
 	}
 

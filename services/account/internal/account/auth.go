@@ -1,6 +1,8 @@
 package account
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/mail"
 	"regexp"
@@ -26,21 +28,13 @@ type RegisterRequest struct {
 }
 
 type RegisterResponse struct {
-	AccountID   int64
-	Username    string
-	DisplayName string
-
-	AccessToken string
+	Profile Profile
+	Token   Token
 }
 
 type LoginRequest struct {
 	Email    string
 	Password string
-}
-
-type LoginResponse struct {
-	AccountID int64
-	Username  string
 }
 
 type TokenManager struct {
@@ -55,6 +49,8 @@ type Token struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 }
+
+var usernameRegex = regexp.MustCompile(`^[a-z0-9_]{3,20}$`)
 
 var (
 	ErrEmailAlreadyExists    = errors.New("email already exists")
@@ -73,6 +69,7 @@ var (
 func NewAuthService(r *Repository, tm *TokenManager) *AuthService {
 	return &AuthService{r: r, tm: tm}
 }
+
 func (s *AuthService) Register(
 	req RegisterRequest,
 ) (RegisterResponse, error) {
@@ -102,64 +99,70 @@ func (s *AuthService) Register(
 	}
 	//create profile
 	err = s.r.createProfile(tx, accountID, req.Username, req.DisplayName)
+
 	if err != nil {
 		return RegisterResponse{}, err
-	}
-
-	ans := RegisterResponse{
-		AccountID:   accountID,
-		Username:    req.Username,
-		DisplayName: req.DisplayName,
 	}
 	if err := tx.Commit(); err != nil {
 		return RegisterResponse{}, err
 	}
+
+	token, err := s.Login(LoginRequest{
+		Email:    req.Email,
+		Password: req.Password,
+	})
+	if err != nil {
+		return RegisterResponse{}, err
+	}
+	ans := RegisterResponse{
+		Token: token,
+		Profile: Profile{
+			AccountID:   accountID,
+			Username:    req.Username,
+			DisplayName: req.DisplayName,
+		},
+	}
 	return ans, nil
 }
 
-func (s *AuthService) Login(req LoginRequest) (*Token, error) {
+func (s *AuthService) Login(req LoginRequest) (Token, error) {
 	account, err := s.r.getAccountByEmail(req.Email)
 	if err != nil {
-		return nil, err
+		return Token{}, err
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(req.Password))
 	if err != nil {
-		return nil, ErrInvalidPassword
+		return Token{}, ErrInvalidPassword
 	}
 
 	token, err := s.tm.generateAccessToken(account.ID)
 	if err != nil {
-		return nil, err
+		return Token{}, err
 	}
 	return token, nil
 }
 
-func (t *TokenManager) generateAccessToken(accountID int64) (*Token, error) {
+func (t *TokenManager) generateAccessToken(accountID int64) (Token, error) {
 	accessClaims := jwt.MapClaims{
 		"account_id": accountID,
 		"exp":        time.Now().Add(15 * time.Minute).Unix(),
 	}
 
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodES256, accessClaims)
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
 
-	accessString, err := accessToken.SignedString(t.jwtSecret)
+	accessString, err := accessToken.SignedString([]byte(t.jwtSecret))
 	if err != nil {
-		return nil, err
+		return Token{}, err
 	}
 
-	refreshClaims := jwt.MapClaims{
-		"account_id": accountID,
-		"exp":        time.Now().Add(30 * 24 * time.Hour).Unix(),
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return Token{}, err
 	}
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
+	refreshString := hex.EncodeToString(b)
 
-	refreshString, err := refreshToken.SignedString(t.jwtSecret)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Token{
+	return Token{
 		AccessToken:  accessString,
 		RefreshToken: refreshString,
 	}, nil
@@ -221,7 +224,6 @@ func validatePassword(password string) error {
 }
 
 func validateUsername(username string) error {
-	var usernameRegex = regexp.MustCompile(`^[a-z0-9_]{3,20}$`)
 	if !usernameRegex.MatchString(username) {
 		return ErrInvalidUsername
 	}

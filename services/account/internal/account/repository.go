@@ -48,6 +48,7 @@ func (r *Repository) createProfile(
 	username string,
 	displayName string,
 ) error {
+
 	const queryInsertProfile = `
     INSERT INTO profiles (account_id, username, display_name)
     VALUES ($1, $2, $3);
