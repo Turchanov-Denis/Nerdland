@@ -20,11 +20,8 @@ type Profile struct {
 }
 
 type PublicProfile struct {
-	AccountID   int64
-	Email       string
 	Username    string
 	DisplayName string
 	Bio         string
 	AvatarUrl   string
-	CreatedAt   time.Time
 }

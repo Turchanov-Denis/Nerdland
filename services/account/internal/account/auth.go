@@ -2,6 +2,7 @@ package account
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"net/mail"
@@ -33,8 +34,9 @@ type RegisterResponse struct {
 }
 
 type LoginRequest struct {
-	Email    string
-	Password string
+	Email     string
+	Password  string
+	UserAgent string
 }
 
 type TokenManager struct {
@@ -124,7 +126,37 @@ func (s *AuthService) Register(
 	}
 	return ans, nil
 }
+func (s *AuthService) RevokeSessionByRefreshTokenHash(refreshTokenHash string) error {
+	err := s.r.RevokeSessionByRefreshTokenHash(refreshTokenHash)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
+func (s *AuthService) FindSessionByRefreshTokenHash(refreshTokenHash string) (Session, error) {
+	session, err := s.r.FindSessionByRefreshTokenHash(refreshTokenHash)
+	if err != nil {
+		return session, err
+	}
+	return session, nil
+}
+
+func (s *AuthService) GenerateAccessToken(accountID int64) (string, error) {
+	token, err := s.tm.generateAccessToken(accountID)
+	if err != nil {
+		return "", err
+	}
+	return token.AccessToken, nil
+}
+
+func (s *AuthService) GetPublicProfile(username string) (PublicProfile, error) {
+	profile, err := s.r.GetProfileByUsername(username)
+	if err != nil {
+		return PublicProfile{}, err
+	}
+	return *profile, nil
+}
 func (s *AuthService) Login(req LoginRequest) (Token, error) {
 	account, err := s.r.getAccountByEmail(req.Email)
 	if err != nil {
@@ -140,13 +172,34 @@ func (s *AuthService) Login(req LoginRequest) (Token, error) {
 	if err != nil {
 		return Token{}, err
 	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return Token{}, err
+	}
+	refreshString := hex.EncodeToString(b)
+	token.RefreshToken = refreshString
+	hash := sha256.Sum256([]byte(refreshString))
+	refreshTokenHash := hex.EncodeToString(hash[:])
+
+	session := Session{
+		AccountID:        account.ID,
+		RefreshTokenHash: refreshTokenHash,
+		UserAgent:        req.UserAgent,
+		ExpiresAt:        time.Now().Add(30 * 24 * time.Hour).UTC(),
+	}
+	err = s.r.CreateSession(session)
+	if err != nil {
+		return Token{}, err
+	}
+
 	return token, nil
 }
 
 func (t *TokenManager) generateAccessToken(accountID int64) (Token, error) {
 	accessClaims := jwt.MapClaims{
-		"account_id": accountID,
-		"exp":        time.Now().Add(15 * time.Minute).Unix(),
+		"sub": accountID,
+		"exp": time.Now().Add(15 * time.Minute).Unix(),
 	}
 
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
@@ -156,15 +209,8 @@ func (t *TokenManager) generateAccessToken(accountID int64) (Token, error) {
 		return Token{}, err
 	}
 
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return Token{}, err
-	}
-	refreshString := hex.EncodeToString(b)
-
 	return Token{
-		AccessToken:  accessString,
-		RefreshToken: refreshString,
+		AccessToken: accessString,
 	}, nil
 }
 

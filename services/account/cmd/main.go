@@ -4,11 +4,15 @@ import (
 	"account/internal/account"
 	"account/internal/database"
 	"account/logger"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
+	"unicode/utf8"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -19,6 +23,15 @@ type Server struct {
 	log         *slog.Logger
 	mux         *http.ServeMux
 }
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+type RefreshResponse struct {
+	AccessToken string `json:"access_token"`
+}
 
 func NewServer(as *account.AuthService, log *slog.Logger) *Server {
 	s := &Server{
@@ -28,12 +41,87 @@ func NewServer(as *account.AuthService, log *slog.Logger) *Server {
 	}
 	s.mux.HandleFunc("/auth/login", s.handleLogin)
 	s.mux.HandleFunc("/auth/register", s.handleRegistration)
+	s.mux.HandleFunc("/auth/logout", s.handleLogout)
+	s.mux.HandleFunc("/auth/refresh", s.handleRefresh)
+	s.mux.HandleFunc("GET /{username}", s.handlePublicProfile)
 	return s
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("incoming request", "method", r.Method, "path", r.URL.Path)
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) handlePublicProfile(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	if utf8.RuneCountInString(username) < 3 {
+		writeError(w, http.StatusBadRequest, "invalid username")
+		return
+	}
+	profile, err := s.authService.GetPublicProfile(username)
+	if err != nil {
+		s.log.Error("failed to get public profile", "error", err)
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, profile)
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req LogoutRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	hash := sha256.Sum256([]byte(req.RefreshToken))
+	refreshTokenHash := hex.EncodeToString(hash[:])
+	err = s.authService.RevokeSessionByRefreshTokenHash(refreshTokenHash)
+	if err != nil {
+		s.log.Error(r.URL.Path, "error", err.Error())
+		writeError(w, http.StatusInternalServerError, "invalid logout")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// refresh_token → refresh session → new access token
+func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req RefreshRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	hash := sha256.Sum256([]byte(req.RefreshToken))
+	refreshTokenHash := hex.EncodeToString(hash[:])
+	session, err := s.authService.FindSessionByRefreshTokenHash(refreshTokenHash)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid refresh")
+		return
+	}
+	if session.RevokedAt != nil && session.ExpiresAt.Before(time.Now()) {
+		writeError(w, http.StatusInternalServerError, "invalid refresh")
+		return
+	}
+	newAccessToken, err := s.authService.GenerateAccessToken(session.AccountID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "invalid refresh")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, RefreshResponse{
+		AccessToken: newAccessToken})
 }
 
 func (s *Server) handleRegistration(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +131,7 @@ func (s *Server) handleRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 	var req account.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.log.Warn("failed to decode login request", "error", err)
+		s.log.Error("failed to decode login request", "error", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -78,7 +166,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	var req account.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.log.Warn("failed to decode login request", "error", err)
+		s.log.Error("failed to decode login request", "error", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -107,15 +195,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//func writeJSON(w http.ResponseWriter, status int, v any) {
-//	w.Header().Set("Content-Type", "application/json")
-//	w.WriteHeader(status)
-//	_ = json.NewEncoder(w).Encode(v)
-//}
-//
-//func writeError(w http.ResponseWriter, status int, msg string) {
-//	writeJSON(w, status, map[string]string{"error": msg})
-//}
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
 
 func main() {
 	log := logger.New()
