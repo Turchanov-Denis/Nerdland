@@ -32,6 +32,98 @@ VALUES ($1,$2,$3,$4)
 	return nil
 }
 
+func (r *Repository) Follow(followerID int64, followingID int64) error {
+
+	const queryFolow = `
+	INSERT INTO follows (follower_id, following_id)
+	VALUES ($1, $2)
+	ON CONFLICT DO NOTHING
+`
+	_, err := r.db.Exec(queryFolow, followerID, followingID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) UnFollow(followerID int64, followingID int64) error {
+	const queryUnfollow = `
+	DELETE FROM follows
+	WHERE follower_id = $1 AND  folloing_id = $2
+`
+	_, err := r.db.Exec(queryUnfollow, followerID, followingID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) GetFollowerList(userID int64) ([]PublicProfile, error) {
+	const queryGetFollower = `
+	SELECT follower_id FROM follows
+	WHERE following_id = $1
+	ORDER BY created_at
+`
+
+	rows, err := r.db.Query(queryGetFollower, userID)
+	if err != nil {
+		return []PublicProfile{}, err
+	}
+	defer rows.Close()
+
+	listPublicProfoles := make([]PublicProfile, 0)
+
+	for rows.Next() {
+		var followerID int64
+		if err := rows.Scan(&followerID); err != nil {
+			return []PublicProfile{}, err
+		}
+		pp, err := r.GetProfileByAccountID(followerID)
+		if err != nil {
+			return []PublicProfile{}, err
+		}
+		listPublicProfoles = append(listPublicProfoles, *pp)
+	}
+
+	if err := rows.Err(); err != nil {
+		return []PublicProfile{}, err
+	}
+	return listPublicProfoles, nil
+}
+
+func (r *Repository) GetFollowingList(userID int64) ([]PublicProfile, error) {
+	const queryGetFollowing = `
+	SELECT follower_id FROM follows
+	WHERE follower_id = $1
+	ORDER BY created_at
+`
+
+	rows, err := r.db.Query(queryGetFollowing, userID)
+	if err != nil {
+		return []PublicProfile{}, err
+	}
+	defer rows.Close()
+
+	listPublicProfoles := make([]PublicProfile, 0)
+
+	for rows.Next() {
+		var followerID int64
+		if err := rows.Scan(&followerID); err != nil {
+			return []PublicProfile{}, err
+		}
+		pp, err := r.GetProfileByAccountID(followerID)
+		if err != nil {
+			return []PublicProfile{}, err
+		}
+		listPublicProfoles = append(listPublicProfoles, *pp)
+	}
+
+	if err := rows.Err(); err != nil {
+		return []PublicProfile{}, err
+	}
+	return listPublicProfoles, nil
+}
+
 func (r *Repository) RevokeSessionByRefreshTokenHash(RefreshTokenHash string) error {
 	const queryRevokeSession = `
 	UPDATE sessions SET revoked_at = $1 WHERE refresh_token_hash = $2 AND revoked_at IS NULL;
@@ -45,6 +137,33 @@ func (r *Repository) RevokeSessionByRefreshTokenHash(RefreshTokenHash string) er
 		return ErrSessionNotFound
 	}
 	return nil
+}
+
+func (r *Repository) GetProfileByAccountID(accountID int64) (*PublicProfile, error) {
+	var profile PublicProfile
+	const selectProfileByUsernameQuery = `
+	SELECT
+		p.username,
+		p.display_name,
+		p.bio,
+		p.avatar_url
+	FROM profiles p
+	WHERE p.account_id = $1
+`
+	err := r.db.QueryRow(selectProfileByUsernameQuery,
+		accountID,
+	).Scan(
+		&profile.Username,
+		&profile.DisplayName,
+		&profile.Bio,
+		&profile.AvatarUrl,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &profile, nil
 }
 
 func (r *Repository) FindSessionByRefreshTokenHash(RefreshTokenHash string) (Session, error) {
@@ -123,7 +242,7 @@ func (r *Repository) createProfile(
 }
 
 // public profile
-func (r *Repository) GetProfileByUsername(username string) (*PublicProfile, error) {
+func (r *Repository) GetPublicProfileByUsername(username string) (*PublicProfile, error) {
 	var profile PublicProfile
 	const selectProfileByUsernameQuery = `
 	SELECT
@@ -148,6 +267,19 @@ func (r *Repository) GetProfileByUsername(username string) (*PublicProfile, erro
 	}
 
 	return &profile, nil
+}
+func (r *Repository) GetAccountIdByUsername(username string) (int64, error) {
+	const queryGetIDByUsername = `
+	SELECT account_id
+	From profiles
+	WHERE username = $1
+`
+	var accountId int64
+	err := r.db.QueryRow(queryGetIDByUsername, username).Scan(&accountId)
+	if err != nil {
+		return -1, err
+	}
+	return accountId, err
 }
 
 func (r *Repository) getAccountByEmail(

@@ -72,6 +72,19 @@ func NewAuthService(r *Repository, tm *TokenManager) *AuthService {
 	return &AuthService{r: r, tm: tm}
 }
 
+func (s *AuthService) GetAccountIdByUsername(username string) (int64, error) {
+
+	accountId, err := s.r.GetAccountIdByUsername(username)
+	if err != nil {
+		return accountId, err
+	}
+	return accountId, nil
+}
+
+func (s *AuthService) TokenSecret() string {
+	return s.tm.jwtSecret
+}
+
 func (s *AuthService) Register(
 	req RegisterRequest,
 ) (RegisterResponse, error) {
@@ -151,7 +164,7 @@ func (s *AuthService) GenerateAccessToken(accountID int64) (string, error) {
 }
 
 func (s *AuthService) GetPublicProfile(username string) (PublicProfile, error) {
-	profile, err := s.r.GetProfileByUsername(username)
+	profile, err := s.r.GetPublicProfileByUsername(username)
 	if err != nil {
 		return PublicProfile{}, err
 	}

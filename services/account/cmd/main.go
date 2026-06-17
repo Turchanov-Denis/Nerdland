@@ -23,9 +23,10 @@ import (
 )
 
 type Server struct {
-	authService *account.AuthService
-	log         *slog.Logger
-	mux         *http.ServeMux
+	authService   *account.AuthService
+	followService *account.FollowService
+	log           *slog.Logger
+	mux           *http.ServeMux
 }
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
@@ -37,23 +38,71 @@ type RefreshResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
-func NewServer(as *account.AuthService, log *slog.Logger) *Server {
+func NewServer(as *account.AuthService, fs *account.FollowService, log *slog.Logger) *Server {
 	s := &Server{
-		authService: as,
-		log:         log,
-		mux:         http.NewServeMux(),
+		authService:   as,
+		followService: fs,
+		log:           log,
+		mux:           http.NewServeMux(),
 	}
 	s.mux.HandleFunc("/auth/login", s.handleLogin)
 	s.mux.HandleFunc("/auth/register", s.handleRegistration)
 	s.mux.HandleFunc("/auth/logout", s.handleLogout)
 	s.mux.HandleFunc("/auth/refresh", s.handleRefresh)
 	s.mux.HandleFunc("GET /{username}", s.handlePublicProfile)
+	// POST /follow
+	follow := JWTMiddleware(s.authService.TokenSecret(), s.log, http.HandlerFunc(s.handleFollow))
+	s.mux.Handle("POST /follow", follow)
+	// GET /followers
+	getFollowers := JWTMiddleware(s.authService.TokenSecret(), s.log, http.HandlerFunc(s.handleFollow))
+	s.mux.Handle("GET /followers", getFollowers)
+	// GET /following
 	return s
+}
+
+type FollowRequest struct {
+	Username string `json:"username"`
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("incoming request", "method", r.Method, "path", r.URL.Path)
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
+	// из контекста после jwtMiddleWare получить account id
+	//username из r.Body
+	ulog := s.log.With(
+		slog.String("path", r.URL.Path),
+		slog.String("method", r.Method),
+		slog.String("adress", r.RemoteAddr))
+
+	followerID, ok := r.Context().Value("account_id").(int64)
+	if !ok {
+		ulog.Error("Unauthorized")
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+	}
+	var req FollowRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	followingID, err := s.authService.GetAccountIdByUsername(req.Username)
+	if err != nil {
+		ulog.Error("no found by username", slog.Any("error", err))
+		writeError(w, http.StatusNotFound, "no found")
+		return
+	}
+	err = s.followService.Follow(followerID, followingID)
+	if err != nil {
+		ulog.Error("follow error", slog.Any("error", err))
+		writeError(w, http.StatusInternalServerError, "internal service error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, req.Username)
+
 }
 
 func (s *Server) handlePublicProfile(w http.ResponseWriter, r *http.Request) {
@@ -288,7 +337,6 @@ func main() {
 
 	accountRepo := account.NewRepository(db)
 	// db init
-	err = accountRepo.Init()
 	if err != nil {
 		log.Error(err.Error())
 		panic(err)
@@ -296,8 +344,8 @@ func main() {
 
 	tm := account.NewTokenManager(os.Getenv("JWT_SECRET"))
 	authService := account.NewAuthService(accountRepo, tm)
-
-	server := NewServer(authService, log)
+	followService := account.NewFollowService(accountRepo)
+	server := NewServer(authService, followService, log)
 
 	log.Info("server is running on :8080")
 	if err := http.ListenAndServe("localhost:8080", server); err != nil {
