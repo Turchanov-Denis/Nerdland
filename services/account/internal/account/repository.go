@@ -20,45 +20,6 @@ func NewRepository(db *sql.DB) *Repository {
 	}
 }
 
-func (r *Repository) Init() error {
-	query := `
-CREATE TABLE IF NOT EXISTS accounts (
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-	email TEXT NOT NULL,
-	password_hash TEXT NOT NULL,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    
-    CONSTRAINT accounts_email_unique UNIQUE (email)
-);
-
-CREATE TABLE IF NOT EXISTS profiles (
-	account_id BIGINT PRIMARY KEY,
-	username TEXT NOT NULL,
-	display_name TEXT NOT NULL,
-	bio TEXT NOT NULL DEFAULT '',
-	avatar_url TEXT NOT NULL DEFAULT '',
-	FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-    
-    CONSTRAINT profiles_username_unique UNIQUE (username)
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-	id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-	account_id BIGINT NOT NULL,
-	refresh_token_hash TEXT NOT NULL,
-	user_agent TEXT DEFAULT NULL,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-	expires_at TIMESTAMPTZ NOT NULL,
-	revoked_at TIMESTAMPTZ DEFAULT NULL,
-	
-	FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-	CONSTRAINT session_refresh_token_hash_unique UNIQUE (refresh_token_hash)
-);
-`
-	_, err := r.db.Exec(query)
-	return err
-}
-
 func (r *Repository) CreateSession(s Session) error {
 	const queryInsertSession = `
 INSERT INTO sessions (account_id, refresh_token_hash, user_agent, expires_at)
