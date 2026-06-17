@@ -4,6 +4,7 @@ import (
 	"account/internal/account"
 	"account/internal/database"
 	"account/logger"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,9 +12,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -193,6 +197,62 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(tokens); err != nil {
 		s.log.Error("failed to encode tokens response", "error", err)
 	}
+}
+
+func JWTMiddleware(jwtSecret string, log *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqID := r.Header.Get("X-Request-ID")
+		if reqID == "" {
+			reqID = uuid.NewString()
+		}
+		uctx := context.WithValue(r.Context(), "X-Request-ID", reqID)
+
+		ulog := log.With(slog.String("request_id", reqID),
+			slog.String("path", r.URL.Path),
+			slog.String("method", r.Method))
+
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			writeError(w, http.StatusUnauthorized, "missing token")
+			return
+		}
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			ulog.ErrorContext(uctx, "invalid token format")
+			writeError(w, http.StatusUnauthorized, "invalid token format")
+			return
+		}
+		tokenStr := parts[1]
+		// parse jwt
+		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
+			return []byte(jwtSecret), nil
+		})
+		if err != nil || !token.Valid {
+			// context for trace?
+			ulog.ErrorContext(uctx, "bad parse token", slog.Any("error", err))
+			writeError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		// Go parse json in  float64, fan fact
+		sub, ok := claims["sub"].(float64)
+		if !ok {
+			ulog.ErrorContext(uctx, "invalid sub", slog.Any("error", err))
+			writeError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		accountID := int64(sub)
+
+		ctx := context.WithValue(uctx, "account_id", accountID)
+		r = r.WithContext(ctx)
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
