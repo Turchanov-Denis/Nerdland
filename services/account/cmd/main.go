@@ -52,17 +52,19 @@ func NewServer(as *account.AuthService, fs *account.FollowService, log *slog.Log
 	s.mux.HandleFunc("GET /{username}", s.handlePublicProfile)
 	// POST /follow
 	follow := JWTMiddleware(s.authService.TokenSecret(), s.log, http.HandlerFunc(s.handleFollow))
-	s.mux.Handle("POST /follow", follow)
+	s.mux.Handle("POST /follow{username}", follow)
 	// GET /followers
-	getFollowers := JWTMiddleware(s.authService.TokenSecret(), s.log, http.HandlerFunc(s.handleFollow))
-	s.mux.Handle("GET /followers", getFollowers)
+	getFollowers := JWTMiddleware(s.authService.TokenSecret(), s.log, http.HandlerFunc(s.handleGetFollowers))
+	s.mux.Handle("GET /followers/{username}", getFollowers)
 	// GET /following
+	getFollowing := JWTMiddleware(s.authService.TokenSecret(), s.log, http.HandlerFunc(s.handleGetFollowing))
+	s.mux.Handle("GET /following/{username}", getFollowing)
 	return s
 }
 
-type FollowRequest struct {
-	Username string `json:"username"`
-}
+//type FollowRequest struct {
+//	Username string `json:"username"`
+//}
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("incoming request", "method", r.Method, "path", r.URL.Path)
@@ -82,13 +84,13 @@ func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
 		ulog.Error("Unauthorized")
 		writeError(w, http.StatusUnauthorized, "Unauthorized")
 	}
-	var req FollowRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json")
-		return
+
+	username := r.PathValue("username")
+	if utf8.RuneCountInString(username) < 3 {
+		writeError(w, http.StatusBadRequest, "bad username")
 	}
-	followingID, err := s.authService.GetAccountIdByUsername(req.Username)
+
+	followingID, err := s.authService.GetAccountIdByUsername(username)
 	if err != nil {
 		ulog.Error("no found by username", slog.Any("error", err))
 		writeError(w, http.StatusNotFound, "no found")
@@ -105,6 +107,63 @@ func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (s *Server) handleGetFollowers(w http.ResponseWriter, r *http.Request) {
+	// из контекста после jwtMiddleWare получить account id
+	ulog := s.log.With(
+		slog.String("path", r.URL.Path),
+		slog.String("method", r.Method),
+		slog.String("adress", r.RemoteAddr))
+
+	username := r.PathValue("username")
+	if utf8.RuneCountInString(username) < 3 {
+		writeError(w, http.StatusBadRequest, "bad username")
+	}
+
+	targetID, err := s.authService.GetAccountIdByUsername(username)
+	if err != nil {
+		ulog.Error("no found by username", slog.Any("error", err))
+		writeError(w, http.StatusNotFound, "no found")
+		return
+	}
+
+	followers, err := s.followService.GetFollowers(targetID)
+	if err != nil {
+		ulog.Error("error with found followers", slog.Any("error", err))
+		writeError(w, http.StatusInternalServerError, "internal service error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, followers)
+}
+
+func (s *Server) handleGetFollowing(w http.ResponseWriter, r *http.Request) {
+	// из контекста после jwtMiddleWare получить account id
+	ulog := s.log.With(
+		slog.String("path", r.URL.Path),
+		slog.String("method", r.Method),
+		slog.String("adress", r.RemoteAddr))
+
+	username := r.PathValue("username")
+	if utf8.RuneCountInString(username) < 3 {
+		writeError(w, http.StatusBadRequest, "bad username")
+	}
+
+	targetID, err := s.authService.GetAccountIdByUsername(username)
+	if err != nil {
+		ulog.Error("no found by username", slog.Any("error", err))
+		writeError(w, http.StatusNotFound, "no found")
+		return
+	}
+
+	following, err := s.followService.GetFollowing(targetID)
+	if err != nil {
+		ulog.Error("error with found followers", slog.Any("error", err))
+		writeError(w, http.StatusInternalServerError, "internal service error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, following)
+}
 func (s *Server) handlePublicProfile(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
 	if utf8.RuneCountInString(username) < 3 {
