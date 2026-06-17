@@ -49,7 +49,7 @@ func (r *Repository) Follow(followerID int64, followingID int64) error {
 func (r *Repository) UnFollow(followerID int64, followingID int64) error {
 	const queryUnfollow = `
 	DELETE FROM follows
-	WHERE follower_id = $1 AND  folloing_id = $2
+	WHERE follower_id = $1 AND  following_id = $2
 `
 	_, err := r.db.Exec(queryUnfollow, followerID, followingID)
 	if err != nil {

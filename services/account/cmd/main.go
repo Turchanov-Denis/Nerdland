@@ -52,7 +52,7 @@ func NewServer(as *account.AuthService, fs *account.FollowService, log *slog.Log
 	s.mux.HandleFunc("GET /{username}", s.handlePublicProfile)
 	// POST /follow
 	follow := JWTMiddleware(s.authService.TokenSecret(), s.log, http.HandlerFunc(s.handleFollow))
-	s.mux.Handle("POST /follow{username}", follow)
+	s.mux.Handle("POST /follow/{username}", follow)
 	// GET /followers
 	getFollowers := JWTMiddleware(s.authService.TokenSecret(), s.log, http.HandlerFunc(s.handleGetFollowers))
 	s.mux.Handle("GET /followers/{username}", getFollowers)
