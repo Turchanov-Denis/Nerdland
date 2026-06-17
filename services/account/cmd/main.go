@@ -103,7 +103,7 @@ func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, req.Username)
+	writeJSON(w, http.StatusOK, username)
 
 }
 
@@ -395,11 +395,6 @@ func main() {
 	}
 
 	accountRepo := account.NewRepository(db)
-	// db init
-	if err != nil {
-		log.Error(err.Error())
-		panic(err)
-	}
 
 	tm := account.NewTokenManager(os.Getenv("JWT_SECRET"))
 	authService := account.NewAuthService(accountRepo, tm)
