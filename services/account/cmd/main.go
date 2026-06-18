@@ -379,12 +379,13 @@ func main() {
 
 	err := godotenv.Load(".env", "./.env")
 	if err != nil {
-		log.Info("No .env found")
+		log.Info(".env not found, using environment variables")
 	}
 
 	db, err := database.NewPostgress()
 	if err != nil {
 		log.Error(err.Error())
+		panic(err)
 	}
 	defer db.Close()
 
@@ -392,6 +393,7 @@ func main() {
 	err = db.Ping()
 	if err != nil {
 		log.Error(err.Error())
+		panic(err)
 	}
 
 	accountRepo := account.NewRepository(db)
@@ -402,7 +404,7 @@ func main() {
 	server := NewServer(authService, followService, log)
 
 	log.Info("server is running on :8080")
-	if err := http.ListenAndServe("localhost:8080", server); err != nil {
+	if err := http.ListenAndServe("0.0.0.0:8080", server); err != nil {
 		log.Error("server stopped with error", "error", err)
 	}
 
