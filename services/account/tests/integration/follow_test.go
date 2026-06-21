@@ -14,7 +14,7 @@ import (
 func setupDB(t *testing.T) *sql.DB {
 	db, err := sql.Open(
 		"postgres",
-		"postgres://test:test@localhost:5433/testdb?sslmode=disable",
+		"postgres://test:test@localhost:5432/testdb?sslmode=disable",
 	)
 
 	require.NoError(t, err)

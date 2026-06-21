@@ -3,6 +3,7 @@ package integration
 import (
 	"account/internal/account"
 	"database/sql"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,7 +14,7 @@ import (
 func setupDB(t *testing.T) *sql.DB {
 	db, err := sql.Open(
 		"postgres",
-		"postgres://test:test@localhost:5433/testdb?sslmode=disable",
+		"postgres://test:test@localhost:5432/testdb?sslmode=disable",
 	)
 
 	require.NoError(t, err)
@@ -37,7 +38,7 @@ func TestAuthFlow(t *testing.T) {
 		})
 
 	repo := account.NewRepository(testDB)
-	authService := account.NewAuthService(repo, &account.TokenManager{})
+	authService := account.NewAuthService(repo, account.NewTokenManager(os.Getenv("JWT_SECRET")))
 
 	signUpReq := account.RegisterRequest{
 		Email:       "mary@test.com",

@@ -1,0 +1,48 @@
+name: account
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+    defaults:
+      run:
+        working-directory: services/account
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@latest
+
+      - name: Run migrations
+        env:
+          GOOSE_DRIVER: postgres
+          GOOSE_DBSTRING: postgres://test:test@localhost:5432/testdb?sslmode=disable
+        run: goose -dir migrations up
+
+      - name: Run integration tests
+        env:
+          JWT_SECRET: ${{secrets.JWT_SECRET}}
+        run: go test ./tests/integration -v

@@ -44,6 +44,9 @@ type TokenManager struct {
 }
 
 func NewTokenManager(secret string) *TokenManager {
+	if secret == "" {
+		panic("JWT_SECRET empty")
+	}
 	return &TokenManager{jwtSecret: secret}
 }
 
