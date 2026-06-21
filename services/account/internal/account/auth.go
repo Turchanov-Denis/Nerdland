@@ -140,7 +140,7 @@ func (s *AuthService) Register(
 	return ans, nil
 }
 func (s *AuthService) RevokeSessionByRefreshTokenHash(refreshTokenHash string) error {
-	err := s.r.RevokeSessionByRefreshTokenHash(refreshTokenHash)
+	err := s.r.revokeSessionByRefreshTokenHash(refreshTokenHash)
 	if err != nil {
 		return err
 	}
@@ -201,7 +201,7 @@ func (s *AuthService) Login(req LoginRequest) (Token, error) {
 		UserAgent:        req.UserAgent,
 		ExpiresAt:        time.Now().Add(30 * 24 * time.Hour).UTC(),
 	}
-	err = s.r.CreateSession(session)
+	err = s.r.createSession(session)
 	if err != nil {
 		return Token{}, err
 	}

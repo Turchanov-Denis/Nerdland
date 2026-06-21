@@ -20,7 +20,7 @@ func NewRepository(db *sql.DB) *Repository {
 	}
 }
 
-func (r *Repository) CreateSession(s Session) error {
+func (r *Repository) createSession(s Session) error {
 	const queryInsertSession = `
 INSERT INTO sessions (account_id, refresh_token_hash, user_agent, expires_at)
 VALUES ($1,$2,$3,$4)
@@ -32,7 +32,7 @@ VALUES ($1,$2,$3,$4)
 	return nil
 }
 
-func (r *Repository) Follow(followerID int64, followingID int64) error {
+func (r *Repository) follow(followerID int64, followingID int64) error {
 
 	const queryFolow = `
 	INSERT INTO follows (follower_id, following_id)
@@ -46,7 +46,7 @@ func (r *Repository) Follow(followerID int64, followingID int64) error {
 	return nil
 }
 
-func (r *Repository) UnFollow(followerID int64, followingID int64) error {
+func (r *Repository) unFollow(followerID int64, followingID int64) error {
 	const queryUnfollow = `
 	DELETE FROM follows
 	WHERE follower_id = $1 AND  following_id = $2
@@ -124,7 +124,7 @@ func (r *Repository) GetFollowingList(userID int64) ([]PublicProfile, error) {
 	return listPublicProfoles, nil
 }
 
-func (r *Repository) RevokeSessionByRefreshTokenHash(RefreshTokenHash string) error {
+func (r *Repository) revokeSessionByRefreshTokenHash(RefreshTokenHash string) error {
 	const queryRevokeSession = `
 	UPDATE sessions SET revoked_at = $1 WHERE refresh_token_hash = $2 AND revoked_at IS NULL;
 `

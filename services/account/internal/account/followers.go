@@ -22,7 +22,7 @@ func (s *FollowService) Follow(followerID int64, followingID int64) error {
 	if followerID == followingID {
 		return ErrSelfFollowing
 	}
-	err := s.r.Follow(followerID, followingID)
+	err := s.r.follow(followerID, followingID)
 	if err != nil {
 		return err
 	}
@@ -32,7 +32,7 @@ func (s *FollowService) Unfollow(followerID int64, followingID int64) error {
 	if followerID == followingID {
 		return ErrSelfFollowing
 	}
-	err := s.r.UnFollow(followerID, followingID)
+	err := s.r.unFollow(followerID, followingID)
 	if err != nil {
 		return err
 	}
