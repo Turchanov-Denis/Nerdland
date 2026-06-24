@@ -1,6 +1,4 @@
 -- +goose Up
-
-SELECT 'up SQL query';
 CREATE TABLE follows (
                          follower_id BIGINT NOT NULL,
                          following_id BIGINT NOT NULL,
@@ -8,10 +6,9 @@ CREATE TABLE follows (
 
                          PRIMARY KEY (follower_id, following_id),
 
+                         CHECK (follower_id <> following_id),
                          FOREIGN KEY (follower_id) REFERENCES accounts(id) ON DELETE CASCADE,
                          FOREIGN KEY (following_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 -- +goose Down
-SELECT 'down SQL query';
-
-DROP TABLE follows
+DROP TABLE IF EXISTS follows;
