@@ -22,7 +22,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-nerdland}
       PGDATA: /data/postgres
     volumes:
-      - postgres:/data/postgres
+      - postgres-account:/data/postgres
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     networks:
@@ -36,14 +36,14 @@ services:
 
   postgres-tweets:
     image: postgres:17
-    container_name: postgres-account
+    container_name:  postgres-tweets
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-nerdland}
       PGDATA: /data/postgres
     volumes:
-      - postgres:/data/postgres
+      - postgres-tweets:/data/postgres
     ports:
       - "${POSTGRES_PORT:-5434}:5432"
     networks:
@@ -75,5 +75,6 @@ networks:
     driver: bridge
 
 volumes:
-  postgres:
+  postgres-account:
+  postgres-tweets:
   pgadmin:

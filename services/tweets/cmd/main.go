@@ -9,6 +9,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -43,7 +44,8 @@ func main() {
 		grpcServer,
 		tweets.NewGRPCServer(tweetService),
 	)
-	lis, err := net.Listen("tcp", ":50051")
+	reflection.Register(grpcServer)
+	lis, err := net.Listen("tcp", "127.0.0.1:50051")
 	if err != nil {
 		log.Error(err.Error())
 		panic(err)
@@ -55,4 +57,5 @@ func main() {
 		log.Error(err.Error())
 		panic(err)
 	}
+
 }

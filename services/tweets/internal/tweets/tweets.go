@@ -31,5 +31,14 @@ func NewTweetService(r Repository) *TweetService {
 
 func (t *TweetService) CreateTweet(ctx context.Context, req CreateTweetRequest) (TweetResponse, error) {
 	// сохранить в БД
-	return TweetResponse{}, nil
+	tweet, err := t.r.CreateTweet(ctx, req)
+	if err != nil {
+		return TweetResponse{}, err
+	}
+	tweetRes := TweetResponse{
+		ID:        tweet.ID,
+		AccountID: tweet.AccountID,
+		Text:      tweet.Text,
+	}
+	return tweetRes, nil
 }
