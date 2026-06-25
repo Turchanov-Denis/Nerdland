@@ -7,5 +7,5 @@ CREATE TABLE tweets
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CHECK (char_length(text) <= 500)
-)
+);
 -- +goose Down
